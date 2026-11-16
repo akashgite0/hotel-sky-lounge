@@ -3,8 +3,9 @@
 Official website for **Hotel Sky Lounge – Family Restaurant & Bar**, Jay Bhawani Chowk,
 Nila Road, Nanded, Maharashtra 431605.
 
-- Live site: deployed on Vercel (see Vercel dashboard for the URL)
+- Live site: https://hotel-sky-lounge.vercel.app/ (Vercel, auto-deploys from `main`)
 - Stack: plain HTML + CSS + JavaScript. No build step, no framework.
+- Design: parallax editorial — cream paper palette, letterspaced display type, scroll-driven parallax (fixed hero, drifting photo layers, full-bleed bands).
 - Menu data lives in `menu.json`; `index.html` is generated from it.
 
 ## Structure
@@ -13,10 +14,10 @@ Nila Road, Nanded, Maharashtra 431605.
 |---|---|
 | `index.html` | The whole site (generated — do not hand-edit the menu section) |
 | `styles.css` | All styling |
-| `script.js` | Menu tabs/search/filter, gallery lightbox, mobile nav |
+| `script.js` | Parallax engine, menu tabs/search/filter, gallery lightbox, mobile nav |
 | `menu.json` | Restaurant details + full menu with prices (source of truth) |
 | `build.py` | Generates `index.html` from `menu.json` |
-| `images/` | Photos from the restaurant's Google listing |
+| `images/` | Real photos from the Google listing + AI-generated editorial images (`ai-*.jpg`) |
 | `vercel.json` | Vercel deployment config (caching headers) |
 
 ## Updating the menu
@@ -38,3 +39,5 @@ Nila Road, Nanded, Maharashtra 431605.
 Photos in `images/` are from the restaurant's Google Maps listing (interior,
 exterior, and menu dishes). The full gallery on Google has 200+ photos; more can
 be added to `images/` and referenced in the gallery section of `build.py`.
+Files named `ai-*.jpg` are AI-generated editorial images used for the hero,
+story, dining-room band and bar sections.

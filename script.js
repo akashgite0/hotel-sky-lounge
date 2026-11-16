@@ -1,27 +1,89 @@
-// Hotel Sky Lounge — interactions: header, nav, menu tabs/search/filter, lightbox, reveal.
+// Hotel Sky Lounge v2 — parallax engine, menu, lightbox, nav.
 (function () {
   "use strict";
 
-  /* Header state */
-  var header = document.querySelector(".header");
-  var onScroll = function () {
-    header.classList.toggle("scrolled", window.scrollY > 24);
-  };
-  window.addEventListener("scroll", onScroll, { passive: true });
-  onScroll();
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var fine = window.matchMedia("(pointer: fine)").matches;
 
-  /* Mobile nav */
+  /* ---------- Header state + mobile nav ---------- */
+  var header = document.querySelector(".header");
   var burger = document.querySelector(".burger");
-  var nav = document.querySelector(".nav");
+  var mobileNav = document.querySelector(".mobile-nav");
   burger.addEventListener("click", function () {
-    var open = nav.classList.toggle("open");
+    var open = mobileNav.classList.toggle("open");
     burger.setAttribute("aria-expanded", open ? "true" : "false");
   });
-  nav.querySelectorAll("a").forEach(function (a) {
-    a.addEventListener("click", function () { nav.classList.remove("open"); });
+  mobileNav.querySelectorAll("a").forEach(function (a) {
+    a.addEventListener("click", function () { mobileNav.classList.remove("open"); });
   });
 
-  /* Menu tabs */
+  /* ---------- Parallax engine ---------- */
+  var hero = document.querySelector(".hero");
+  var heroImg = hero.querySelector("img.bg");
+  var heroInner = document.querySelector(".hero-inner");
+  var plxEls = Array.prototype.slice.call(document.querySelectorAll("[data-plx]"));
+  var bands = Array.prototype.slice.call(document.querySelectorAll(".band .band-img"));
+  var vh = window.innerHeight;
+  var ticking = false;
+
+  function onScroll() {
+    var y = window.scrollY || window.pageYOffset;
+    header.classList.toggle("solid", y > vh * 0.72);
+    if (reduceMotion) return;
+    // Hero: image drifts down slowly, content rises and fades as the page covers it.
+    var p = Math.min(y / vh, 1);
+    heroImg.style.transform = "scale(1.12) translate3d(0," + (y * 0.22) + "px,0)";
+    heroInner.style.transform = "translate3d(0," + (-y * 0.18) + "px,0)";
+    heroInner.style.opacity = String(Math.max(0, 1 - p * 1.25));
+    // Generic parallax elements: move relative to viewport centre.
+    for (var i = 0; i < plxEls.length; i++) {
+      var el = plxEls[i];
+      var r = el.getBoundingClientRect();
+      if (r.bottom < -100 || r.top > vh + 100) continue;
+      var speed = parseFloat(el.getAttribute("data-plx")) || 0.08;
+      var offset = (r.top + r.height / 2 - vh / 2) * -speed;
+      offset = Math.max(-40, Math.min(40, offset)); // keep drift inside its section
+      el.style.transform = "translate3d(0," + offset.toFixed(1) + "px,0)";
+    }
+    // Full-bleed bands: image taller than its frame, slides within it.
+    for (var j = 0; j < bands.length; j++) {
+      var band = bands[j];
+      var br = band.parentElement.getBoundingClientRect();
+      if (br.bottom < -100 || br.top > vh + 100) continue;
+      var progress = (br.top + br.height / 2 - vh / 2) / (vh / 2 + br.height / 2);
+      var range = br.height * 0.18;
+      band.style.transform = "translate3d(0," + (-progress * range).toFixed(1) + "px,0)";
+    }
+    ticking = false;
+  }
+  function requestTick() {
+    if (!ticking) { ticking = true; requestAnimationFrame(onScroll); }
+  }
+  window.addEventListener("scroll", requestTick, { passive: true });
+  window.addEventListener("resize", function () { vh = window.innerHeight; requestTick(); });
+  onScroll();
+
+  /* Subtle pointer drift on the hero for desktop (very gentle). */
+  if (fine && !reduceMotion) {
+    hero.addEventListener("mousemove", function (e) {
+      var dx = (e.clientX / window.innerWidth - 0.5) * 10;
+      var dy = (e.clientY / window.innerHeight - 0.5) * 6;
+      heroImg.style.translate = dx.toFixed(1) + "px " + dy.toFixed(1) + "px";
+    });
+  }
+
+  /* ---------- Reveal on scroll ---------- */
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("in");
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+
+  /* ---------- Menu tabs / search / veg filter ---------- */
   var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
   var panels = Array.prototype.slice.call(document.querySelectorAll(".menu-panel"));
   var resultsBox = document.getElementById("searchResults");
@@ -38,24 +100,17 @@
       searchInput.value = "";
       showPanel(t.dataset.target);
       applyVegFilter();
-      t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
     });
   });
 
-  /* Veg-only filter */
   function applyVegFilter() {
     var vegOnly = vegToggle.checked;
     document.querySelectorAll(".menu-item").forEach(function (item) {
-      var isVeg = item.dataset.veg === "1";
-      item.style.display = vegOnly && !isVeg ? "none" : "";
-    });
-    document.querySelectorAll(".rn-table tbody tr").forEach(function (row) {
-      row.style.display = vegOnly && row.dataset.veg === "0" ? "none" : "";
+      item.style.display = vegOnly && item.dataset.veg !== "1" ? "none" : "";
     });
   }
   vegToggle.addEventListener("change", applyVegFilter);
 
-  /* Search across all items */
   var allItems = Array.prototype.slice.call(document.querySelectorAll(".menu-item"));
   searchInput.addEventListener("input", function () {
     var q = searchInput.value.trim().toLowerCase();
@@ -71,8 +126,7 @@
     var grouped = {};
     var order = [];
     allItems.forEach(function (item) {
-      var hay = (item.dataset.search || "").toLowerCase();
-      if (hay.indexOf(q) === -1) return;
+      if ((item.dataset.search || "").toLowerCase().indexOf(q) === -1) return;
       if (vegToggle.checked && item.dataset.veg !== "1") return;
       var cat = item.dataset.category;
       if (!grouped[cat]) { grouped[cat] = []; order.push(cat); }
@@ -97,7 +151,7 @@
     resultsBox.classList.add("active");
   });
 
-  /* Gallery lightbox */
+  /* ---------- Gallery lightbox ---------- */
   var lightbox = document.getElementById("lightbox");
   var lbImg = document.getElementById("lbImg");
   var lbCap = document.getElementById("lbCap");
@@ -128,15 +182,4 @@
     if (e.key === "ArrowRight") openLb((current + 1) % galleryItems.length);
     if (e.key === "ArrowLeft") openLb((current - 1 + galleryItems.length) % galleryItems.length);
   });
-
-  /* Reveal on scroll */
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (entry) {
-      if (entry.isIntersecting) {
-        entry.target.classList.add("in");
-        io.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.12 });
-  document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
 })();
