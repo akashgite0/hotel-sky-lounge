@@ -138,7 +138,7 @@ html.js .reveal-d2 { transition-delay: 0.28s; }
 .scroll-cue .cue-line { width: 1px; height: 44px; background: var(--gold-2); animation: cue 2.2s ease-in-out infinite; }
 @keyframes cue { 0%, 100% { transform: scaleY(0.5); transform-origin: top; } 50% { transform: scaleY(1); transform-origin: top; } }
 
-.page { position: relative; z-index: 1; margin-top: 100svh; background: var(--ivory); box-shadow: 0 -30px 60px rgba(0,0,0,0.3); }
+.page { position: relative; z-index: 1; margin-top: 100vh; margin-top: 100svh; background: var(--ivory); box-shadow: 0 -30px 60px rgba(0,0,0,0.3); }
 
 /* ---------- Welcome ---------- */
 .welcome { text-align: center; }

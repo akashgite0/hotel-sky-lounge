@@ -73,15 +73,21 @@
   }
 
   /* ---------- Reveal on scroll ---------- */
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (entry) {
-      if (entry.isIntersecting) {
-        entry.target.classList.add("in");
-        io.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.12 });
-  document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+  var revealEls = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("in");
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    revealEls.forEach(function (el) { io.observe(el); });
+  } else {
+    // Very old webviews: never leave content hidden.
+    revealEls.forEach(function (el) { el.classList.add("in"); });
+  }
 
   /* ---------- Gallery lightbox ---------- */
   var lightbox = document.getElementById("lightbox");
@@ -114,4 +120,6 @@
     if (e.key === "ArrowRight") openLb((current + 1) % galleryItems.length);
     if (e.key === "ArrowLeft") openLb((current - 1 + galleryItems.length) % galleryItems.length);
   });
+
+  window.__slReady = true;
 })();

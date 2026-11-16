@@ -128,6 +128,9 @@ ld = {
 }
 ld_json = json.dumps(ld, ensure_ascii=False, indent=2)
 MENU = menu_html()
+# Plain string (not an f-string): the JS braces must not be interpolated.
+FALLBACK_JS = """<script>/* If the main script ever fails to load, never leave content hidden. */
+setTimeout(function(){if(!window.__slReady){var r=document.querySelectorAll('.reveal');for(var i=0;i<r.length;i++){r[i].classList.add('in');}}},3000);</script>"""
 
 HTML = f"""<!DOCTYPE html>
 <html lang="en">
@@ -146,6 +149,7 @@ HTML = f"""<!DOCTYPE html>
 <link rel="stylesheet" href="styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
 <script>document.documentElement.classList.add('js');</script>
+{FALLBACK_JS}
 <script type="application/ld+json">
 {ld_json}
 </script>
