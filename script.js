@@ -17,7 +17,9 @@
     a.addEventListener("click", function () { mobileNav.classList.remove("open"); });
   });
 
-  /* ---------- Parallax engine ---------- */
+  /* ---------- Parallax engine (desktop, fine pointers only) ----------
+     On phones the scroll transforms cause jank, so parallax is disabled
+     there: the hero flows normally and layers stay static. */
   var hero = document.querySelector(".hero");
   var heroImg = hero.querySelector("img.bg");
   var heroInner = document.querySelector(".hero-inner");
@@ -25,11 +27,25 @@
   var bands = Array.prototype.slice.call(document.querySelectorAll(".band .band-img"));
   var vh = window.innerHeight;
   var ticking = false;
+  var plxEnabled = false;
+  function computePlx() {
+    var next = !reduceMotion && fine && window.innerWidth > 960;
+    if (plxEnabled && !next) {
+      // Crossing to mobile: clear any parallax transforms already applied.
+      heroImg.style.transform = "";
+      heroInner.style.transform = "";
+      heroInner.style.opacity = "";
+      plxEls.forEach(function (el) { el.style.transform = ""; });
+      bands.forEach(function (b) { b.style.transform = ""; });
+    }
+    plxEnabled = next;
+  }
+  computePlx();
 
   function onScroll() {
     var y = window.scrollY || window.pageYOffset;
     header.classList.toggle("solid", y > vh * 0.72);
-    if (reduceMotion) return;
+    if (!plxEnabled) { ticking = false; return; }
     // Hero: image drifts down slowly, content rises and fades as the page covers it.
     var p = Math.min(y / vh, 1);
     heroImg.style.transform = "scale(1.12) translate3d(0," + (y * 0.2) + "px,0)";
@@ -60,7 +76,7 @@
     if (!ticking) { ticking = true; requestAnimationFrame(onScroll); }
   }
   window.addEventListener("scroll", requestTick, { passive: true });
-  window.addEventListener("resize", function () { vh = window.innerHeight; requestTick(); });
+  window.addEventListener("resize", function () { vh = window.innerHeight; computePlx(); requestTick(); });
   onScroll();
 
   /* Subtle pointer drift on the hero for desktop (very gentle). */

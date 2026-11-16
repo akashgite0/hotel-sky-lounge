@@ -309,6 +309,24 @@ footer { background: #100c07; color: var(--ivory); padding: 90px 0 34px; text-al
   .header-inner { grid-template-columns: 1fr auto 1fr; }
   .header-inner .wordmark { grid-column: 2; }
   .burger { display: block; grid-column: 3; justify-self: end; }
+  /* Mobile: no backdrop blur (GPU cost), solid header. */
+  .header.solid { background: #16110b; backdrop-filter: none; }
+  /* Mobile: hero flows normally instead of the fixed-cover trick — no
+     scroll jank, no viewport-height jumps when the browser chrome resizes. */
+  .hero { position: relative; height: 100svh; height: 100vh; }
+  .hero img.bg { transform: none; }
+  .page { margin-top: 0; box-shadow: none; }
+  .hero-inner { padding: 70px 20px 84px; }
+  .hero-inner .eyebrow { letter-spacing: 0.26em; font-size: 0.66rem; }
+  .hero h1 { font-size: clamp(3rem, 15vw, 5rem); }
+  .hero-meta { gap: 8px 20px; margin-top: 24px; }
+  .scroll-cue { bottom: 22px; }
+  .scroll-cue .cue-line { height: 32px; }
+  /* Parallax layers become static on mobile. */
+  .band .band-img { top: 0; height: 100%; }
+  html.js .reveal { transform: translateY(14px); }
+  /* Gold frame sits inside the photo edge on mobile — no bleed past the screen. */
+  .story-photo .frame::after { transform: none; inset: 12px; }
   .mobile-nav {
     display: flex; flex-direction: column; gap: 4px; position: fixed; top: 76px; left: 0; right: 0; z-index: 79;
     background: var(--ink); color: var(--ivory); padding: 12px 28px 24px; border-bottom: 1px solid var(--line-gold);
@@ -333,6 +351,14 @@ footer { background: #100c07; color: var(--ivory); padding: 90px 0 34px; text-al
 @media (max-width: 560px) {
   .wrap { padding: 0 20px; }
   .wordmark { font-size: 0.82rem; letter-spacing: 0.26em; }
+  .wordmark small { letter-spacing: 0.4em; }
   .hero-inner { padding: 70px 20px 80px; }
   .footer-bottom { justify-content: center; text-align: center; }
+}
+/* Short phone screens: keep the hero composition from crowding. */
+@media (max-width: 960px) and (max-height: 700px) {
+  .hero h1 { font-size: clamp(2.5rem, 12.5vw, 3.6rem); }
+  .hero-sub { margin-top: 14px; }
+  .hero-meta { margin-top: 16px; }
+  .scroll-cue { display: none; }
 }
