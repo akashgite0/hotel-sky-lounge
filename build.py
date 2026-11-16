@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Generate index.html for Hotel Sky Lounge v2 (parallax editorial) from menu.json.
+"""Generate index.html for Hotel Sky Lounge v3 (Taj-inspired, story-first) from menu.json.
 
 Usage: python3 build.py
-Reads menu.json in the same directory, writes index.html.
-Menu items are rendered server-side so the full menu is in the HTML (SEO + no-JS friendly).
+The menu section is a small curated selection. Every curated dish + price is
+verified against menu.json at build time (fails loudly on any mismatch).
 """
 import html
 import json
-import re
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -15,74 +14,89 @@ DATA = json.loads((HERE / "menu.json").read_text(encoding="utf-8"))
 R = DATA["restaurant"]
 SWIGGY = "https://www.swiggy.com/city/nanded/hotel-sky-lounge-restaurant-nila-road-harsh-nagar-rest751068"
 
-VEG_CATEGORIES = {"starters-veg", "main-veg", "sabzi", "breads", "salad-finger",
-                  "beverages", "dessert", "rice-biryani"}
-NONVEG_CATEGORIES = {"starters-nonveg", "mughlai-nonveg", "seafood"}
-NONVEG_RE = re.compile(
-    r"\b(chicken|mutton|fish|prawns?|crabs?|eggs?|keema|kheema|boti|paya|"
-    r"bheja|bater|meat|lamb|seafood|murg|raan|non veg)\b"
-)
+# --- Curated menu: (display name, menu.json name, price display, description) ---
+CURATED = [
+    ("From the Tandoor", [
+        ("Classic Tandoori Chicken", "Classic Tandoori Chicken", "750 / 390", "Overnight marinade, roasted over fire"),
+        ("Chicken Tikka", "Chicken Tikka", "350", "Boneless, yogurt and spice, grilled over coals"),
+        ("Kakori Kabab", "Kakori Kabab", "410", "Minced mutton, grilled with Indian seasoning"),
+    ]),
+    ("Handis & Mughlai", [
+        ("Butter Chicken", "Butter Chicken", "390 / 700", "Chicken tikka in tomato and cream gravy"),
+        ("Raan-e-Skyrana", "Raan-e-Skyrana", "1700", "Whole mutton leg, marinated 24+ hours, slow-cooked over charcoal"),
+        ("Mutton Rogan Josh", "Mutton Rogan Josh", "420", "Lamb braised with fennel, cloves and cardamom"),
+    ]),
+    ("Dum Biryanis", [
+        ("Chicken Biryani", "Chicken Biryani", "290", "Sealed and slow-cooked on dum"),
+        ("Mutton Biryani", "Mutton Biryani", "320", "Sealed and slow-cooked on dum"),
+        ("Veg Biryani", "Veg Biryani", "270", "Fragrant basmati, garden vegetables, sealed on dum"),
+    ]),
+    ("From the Sea", [
+        ("Tandoori Prawns", "Tandoori Prawns (Banjara / Chatpata / Lasuni)", "450", "Banjara, chatpata or lasuni"),
+        ("Tandoori Fish", "Tandoori Fish (Banjara / Chatpata / Lasuni)", "410", "Banjara, chatpata or lasuni"),
+        ("Fish Chilli", "Fish Chilli", "420", "Wok-tossed with chilli and garlic"),
+    ]),
+    ("From the Wok", [
+        ("Chicken Chilli", "Chicken Chilli", "340", "Wok-tossed with peppers and chilli-garlic"),
+        ("Chicken 65", "Chicken 65", "340", "The fiery South Indian favourite"),
+        ("Hakka Noodles", None, "from 230", "Smoky wok-tossed noodles"),
+    ]),
+    ("Breads & Sweet Endings", [
+        ("Butter Garlic Naan", "Butter Garlic Naan", "80 / 85", "Baked fresh in the tandoor"),
+        ("Sizzling Chocolate Brownie", "Sizzling Chocolate Brownie with Vanilla Ice Cream", "270", "With vanilla ice cream, served sizzling"),
+        ("Sky's Signature Dessert Platter", "Sky's Signature Dessert Platter", "420", "The house selection"),
+        ("Lassi", "Lassi", "80", "Churned fresh"),
+    ]),
+]
 
 
-def is_veg(cat_id, name):
-    if cat_id in VEG_CATEGORIES:
-        return True
-    if cat_id in NONVEG_CATEGORIES:
-        return False
-    return not NONVEG_RE.search(name.lower())
+def verify_curated():
+    """Every curated price must match menu.json exactly."""
+    prices = {}
+    for cat in DATA["menu"]:
+        for it in cat.get("items", []):
+            prices.setdefault(it["name"], set()).add(str(it["price"]))
+    table = {}
+    for cat in DATA["menu"]:
+        if "table" in cat:
+            for row in cat["table"]["rows"]:
+                table[row["name"]] = [int(p) for p in row["prices"]]
+    errors = []
+    for group, items in CURATED:
+        for display, menu_name, price, _ in items:
+            if menu_name is None:  # table item: verify the "from" floor
+                floor = min(table[display])
+                if price != f"from {floor}":
+                    errors.append(f"{display}: site says '{price}', menu floor is {floor}")
+                continue
+            if menu_name not in prices:
+                errors.append(f"{menu_name}: not found in menu.json")
+            elif price not in prices[menu_name]:
+                errors.append(f"{menu_name}: site says '{price}', menu has {sorted(prices[menu_name])}")
+    if errors:
+        raise SystemExit("MENU VERIFICATION FAILED:\n" + "\n".join(errors))
+    print(f"Menu verified: {sum(len(i) for _, i in CURATED)} curated dishes match menu.json")
+
+
+verify_curated()
 
 
 def esc(s):
     return html.escape(str(s), quote=True)
 
 
-def tag_html(tag):
-    if not tag:
-        return ""
-    cls = "tag spicy" if tag.lower() == "spicy" else "tag"
-    return f'<span class="mi-tag {cls}">{esc(tag)}</span>'
+def menu_html():
+    out = []
+    for group, items in CURATED:
+        rows = "".join(
+            f"<div class='m-item'><div class='m-row'><span class='m-name'>{esc(d)}</span>"
+            f"<span class='m-dots'></span><span class='m-price'>&#8377;{esc(p)}</span></div>"
+            f"<p class='m-desc'>{esc(desc)}</p></div>"
+            for d, _, p, desc in items
+        )
+        out.append(f"<div class='menu-group'><h3>{esc(group)}</h3>{rows}</div>")
+    return "".join(out)
 
-
-def item_html(cat, item):
-    veg = is_veg(cat["id"], item["name"])
-    dot = '<span class="veg-dot" title="Veg"></span>' if veg else '<span class="veg-dot nonveg" title="Non-veg"></span>'
-    desc = f'<p class="mi-desc">{esc(item["desc"])}</p>' if item.get("desc") else ""
-    note = f'<span class="mi-note">{esc(item["note"])}</span>' if item.get("note") else ""
-    search = esc(f'{item["name"]} {item.get("desc", "")}')
-    return (
-        f'<article class="menu-item" data-veg="{"1" if veg else "0"}" '
-        f'data-category="{esc(cat["title"])}" data-search="{search}">'
-        f"{dot}<div class='mi-main'><div class='mi-name-row'>"
-        f"<h3 class='mi-name'>{esc(item['name'])}</h3>{tag_html(item.get('tag'))}"
-        f"</div>{desc}</div>"
-        f"<div class='mi-price'>{note}&#8377;{esc(item['price'])}</div></article>"
-    )
-
-
-def panel_html(cat, first):
-    active = " active" if first else ""
-    if "table" in cat:
-        t = cat["table"]
-        ths = "".join(f"<th>{esc(c)}</th>" for c in t["columns"])
-        rows = ""
-        for row in t["rows"]:
-            tds = "".join(f"<td>&#8377;{esc(p)}</td>" for p in row["prices"])
-            rows += f"<tr><td>{esc(row['name'])}</td>{tds}</tr>"
-        body = (f'<div style="overflow-x:auto"><table class="rn-table">'
-                f"<thead><tr><th></th>{ths}</tr></thead><tbody>{rows}</tbody></table></div>")
-        return f'<div class="menu-panel{active}" id="panel-{cat["id"]}" role="tabpanel">{body}</div>'
-    items = "".join(item_html(cat, it) for it in cat["items"])
-    return (f'<div class="menu-panel{active}" id="panel-{cat["id"]}" role="tabpanel">'
-            f'<div class="menu-cols">{items}</div></div>')
-
-
-tabs = "".join(
-    f'<button class="tab{" active" if i == 0 else ""}" data-target="panel-{c["id"]}" role="tab">{esc(c["title"])}</button>'
-    for i, c in enumerate(DATA["menu"])
-)
-panels = "".join(panel_html(c, i == 0) for i, c in enumerate(DATA["menu"]))
-
-total_items = sum(len(c.get("items", c.get("table", {}).get("rows", []))) for c in DATA["menu"])
 
 ld = {
     "@context": "https://schema.org",
@@ -92,6 +106,7 @@ ld = {
     "servesCuisine": R["cuisines"],
     "priceRange": "₹₹",
     "telephone": R["phone"],
+    "foundingDate": "2023-04",
     "address": {
         "@type": "PostalAddress",
         "streetAddress": "Jay Bhawani Chowk, Nila Road",
@@ -112,8 +127,7 @@ ld = {
     "sameAs": [R["instagram"], R["maps"], R["zomato"], SWIGGY],
 }
 ld_json = json.dumps(ld, ensure_ascii=False, indent=2)
-
-WAVES = """<div class="waves" data-plx="0.03" aria-hidden="true"><svg width="520" height="150" viewBox="0 0 520 150" fill="none"><path d="M0 75 C 65 30, 130 120, 195 75 C 260 30, 325 120, 390 75 C 455 30, 490 60, 520 75" stroke="#571f18" stroke-width="1" opacity="0.45"/><path d="M0 100 C 65 55, 130 145, 195 100 C 260 55, 325 145, 390 100 C 455 55, 490 85, 520 100" stroke="#b93a26" stroke-width="1" opacity="0.35"/></svg></div>"""
+MENU = menu_html()
 
 HTML = f"""<!DOCTYPE html>
 <html lang="en">
@@ -121,14 +135,14 @@ HTML = f"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hotel Sky Lounge — Family Restaurant &amp; Bar, Nanded</title>
-<meta name="description" content="Hotel Sky Lounge, Nanded — family restaurant & bar on Nila Road. Tandoor, Mughlai, dum biryani & seafood. Open daily 11 AM–12 AM. Order on Zomato & Swiggy.">
+<meta name="description" content="Hotel Sky Lounge, Nanded — a family restaurant & bar on Nila Road since April 2023. Tandoor, handis, dum biryani & seafood, in a tower that glows at night. Open daily 11 AM–12 AM.">
 <meta property="og:title" content="Hotel Sky Lounge — Family Restaurant & Bar, Nanded">
-<meta property="og:description" content="Tandoor, Mughlai, dum biryani & seafood on Nila Road, Nanded. Open daily 11 AM–12 AM.">
+<meta property="og:description" content="A table above the city's rush. Family restaurant & bar on Nila Road, Nanded, since April 2023.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="images/ai-hero.jpg">
+<meta property="og:image" content="images/exterior-night.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Jost:wght@200;300;400;500&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400;1,500&family=Jost:wght@200;300;400;500&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
 <script>document.documentElement.classList.add('js');</script>
@@ -141,11 +155,12 @@ HTML = f"""<!DOCTYPE html>
 <header class="header">
   <div class="wrap header-inner">
     <nav class="nav" aria-label="Main">
-      <a href="#menu">Menu</a>
-      <a href="#story">Story</a>
+      <a href="#story">Our Story</a>
+      <a href="#experiences">Experiences</a>
     </nav>
-    <a class="monogram" href="#top" aria-label="Sky Lounge — home">SL</a>
+    <a class="wordmark" href="#top">Hotel Sky Lounge<small>Nanded · Est. April 2023</small></a>
     <nav class="nav right" aria-label="Main">
+      <a href="#menu">Menu</a>
       <a href="#gallery">Gallery</a>
       <a href="#visit">Visit</a>
       <a class="order-link" href="{esc(R['zomato'])}" target="_blank" rel="noopener">Order</a>
@@ -156,8 +171,9 @@ HTML = f"""<!DOCTYPE html>
   </div>
 </header>
 <nav class="mobile-nav" aria-label="Mobile">
+  <a href="#story">Our Story</a>
+  <a href="#experiences">Experiences</a>
   <a href="#menu">Menu</a>
-  <a href="#story">Story</a>
   <a href="#gallery">Gallery</a>
   <a href="#visit">Visit</a>
   <a href="{esc(R['zomato'])}" target="_blank" rel="noopener">Order on Zomato</a>
@@ -166,105 +182,94 @@ HTML = f"""<!DOCTYPE html>
 
 <!-- HERO : fixed, the page scrolls over it -->
 <section class="hero" id="top" aria-label="Hotel Sky Lounge">
-  <img class="bg" src="images/ai-hero.jpg" alt="Overhead feast of butter chicken, tandoori chicken, naan and chutneys" fetchpriority="high">
+  <img class="bg" src="images/exterior-night.jpg" alt="The Sky Lounge tower, lit up at night over Nila Road" fetchpriority="high">
   <div class="hero-inner">
-    <div class="wrap">
-      <h1 class="display">Sky Lounge</h1>
-      <p class="hero-sub">Fire, patience &amp; the art of the handi — on Nila Road, Nanded.</p>
-      <div class="hero-meta">
-        <span><span class="star">★</span> 4.1 · 126 Google reviews</span>
-        <span>Open today · 11 AM – 12 AM</span>
-        <span>Family restaurant &amp; bar</span>
-      </div>
+    <p class="eyebrow">Est. April 2023 · Nanded, Maharashtra</p>
+    <h1>Hotel <em>Sky&nbsp;Lounge</em></h1>
+    <div class="hero-rule"><span>✦</span></div>
+    <p class="hero-sub">An evening above the city.</p>
+    <div class="hero-meta">
+      <span><span class="star">★</span> 4.1 · 126 Google reviews</span>
+      <span>Open today · 11 AM – 12 AM</span>
+      <span>Family restaurant &amp; bar</span>
     </div>
   </div>
-  <span class="scroll-cue">Scroll</span>
+  <span class="scroll-cue">Scroll<span class="cue-line"></span></span>
 </section>
 
 <div class="page">
 <main>
 
-<!-- INTRO -->
-<section class="intro section-pad">
+<!-- WELCOME -->
+<section class="welcome section-pad">
   <div class="wrap">
-    <p class="eyebrow reveal">01 — The Restaurant</p>
-    <p class="statement reveal reveal-d1">A table set for the family, <em>a fire kept for the flavour.</em></p>
-    <p class="lead reveal reveal-d2">On Nila Road in Nanded, Sky Lounge keeps two rooms under one roof — a calm family dining room, and a full bar of its own. Between them, one kitchen: clay ovens, slow handis, and biryanis guests return for.</p>
-    <div class="intro-stats reveal">
-      <div><b>{total_items}+</b><span>Dishes</span></div>
-      <div><b>4.1 ★</b><span>Google rating</span></div>
-      <div><b>13 hrs</b><span>Open daily</span></div>
-    </div>
+    <p class="eyebrow reveal">Welcome</p>
+    <p class="statement reveal reveal-d1" style="margin-top:22px;">A table above the city's rush — <em>where dinner stretches a little longer than planned.</em></p>
+    <p class="reveal reveal-d2">In the heart of Nanded, on Nila Road, Sky Lounge is a family restaurant and bar that treats every evening like an occasion. Warm light, slow food, and a tower that glows when the sun goes down.</p>
+    <p class="welcome-sig reveal">— The House of Sky Lounge</p>
   </div>
-  <div style="position:absolute;right:4%;top:60px;">{WAVES}</div>
 </section>
 
 <!-- STORY -->
-<section id="story" class="section-pad" style="padding-top:20px;">
+<section id="story" class="dark section-pad">
   <div class="wrap story-grid">
-    <div class="story-photo-main">
-      <div data-plx="0.06"><img src="images/ai-tandoor.jpg" alt="Chef garnishing a sizzling tandoori platter beside the clay oven" loading="lazy"></div>
-      <div class="story-photo-small" data-plx="0.08"><img src="images/interior.jpg" alt="The family dining room at Hotel Sky Lounge" loading="lazy"></div>
-      <p class="caption"><i>The tandoor,</i> lit every morning &nbsp;·&nbsp; <i>the dining room,</i> as it is</p>
+    <div class="story-photo">
+      <div class="frame" data-plx="0.05"><img src="images/ai-tandoor.jpg" alt="Chef garnishing a sizzling tandoori platter beside the clay oven" loading="lazy"></div>
+      <span class="tagline">Since April 2023</span>
     </div>
     <div class="story-copy reveal">
-      <p class="eyebrow">02 — From the Fire</p>
-      <h2 class="display">Slow food,<br><span class="serif-it">cooked fast &amp; hot.</span></h2>
-      <p>Marinades rest for a day. Handis seal and slow-cook for hours. Kebabs meet the clay oven only when the coals are right. <strong>Nothing here is hurried except the service.</strong></p>
-      <p>Come at night, when the tower lights up and the whole building glows over Nila Road — that is when Sky Lounge feels most itself.</p>
-      <ul class="story-list">
-        <li><span>Family &amp; bar sections</span><span>separate, always</span></li>
-        <li><span>Full bar</span><span>at the restaurant</span></li>
-        <li><span>Home delivery</span><span>Zomato &amp; Swiggy</span></li>
-        <li><span>Takeaway</span><span>call ahead</span></li>
-      </ul>
+      <p class="eyebrow">Our Story</p>
+      <h2>A tower lit up <em>on Nila Road.</em></h2>
+      <p class="dropcap">In April 2023, a tower on Nila Road lit up for the first time. Nanded had known good food for years — but Sky Lounge arrived with a different idea: a restaurant that feels like an occasion, every single evening. A room above the city's rush, where the lights come on as the sun goes down.</p>
+      <p>The house keeps two rooms under one roof — a calm family dining room, and a bar of its own — so every kind of evening has its place. Between them, one kitchen, faithful to fire: clay ovens, sealed handis, and marinades that rest a full day before they ever meet the coals.</p>
+      <p>What guests return for is simple: <strong>biryanis sealed on dum, kebabs from the tandoor,</strong> and the feeling of the tower at night, glowing over Nila Road.</p>
+      <blockquote class="pull-quote">“Unhurried food, warm light, and a table that is always glad to see you.”
+      <cite>The Sky Lounge Way</cite></blockquote>
     </div>
   </div>
 </section>
 
-<!-- SIGNATURES -->
-<section id="signatures" class="signatures section-pad">
+<!-- EXPERIENCES -->
+<section id="experiences" class="section-pad">
   <div class="wrap">
     <div class="sec-head reveal">
-      <span class="num">03</span>
-      <h2 class="display">Signatures</h2>
-      <span class="rule"></span>
-      <span class="serif-it" style="font-size:1.4rem;color:var(--wine);">from the kitchen</span>
+      <p class="eyebrow">Experiences</p>
+      <h2>Three ways to spend <em>an evening.</em></h2>
+      <div class="ornament"><span>✦</span></div>
+      <p class="lead">Every visit finds its own rhythm — choose the room that suits the evening.</p>
     </div>
-
-    <article class="sig-row">
-      <div class="sig-photo" data-plx="0.05"><img src="images/biryani.jpg" alt="Chicken dum biryani" loading="lazy"></div>
-      <div class="sig-body reveal"><span class="sig-index">No. 01</span><h3>Chicken Dum Biryani</h3><p>Fragrant basmati layered with marinated chicken, sealed and slow-cooked on dum.</p><div class="sig-foot"><span class="sig-price">₹290</span><span class="tag">Bestseller</span></div></div>
-    </article>
-    <article class="sig-row">
-      <div class="sig-photo" data-plx="0.09"><img src="images/prawns.jpg" alt="Ghee roast prawns" loading="lazy"></div>
-      <div class="sig-body reveal"><span class="sig-index">No. 02</span><h3>Ghee Roast Prawns</h3><p>Sea prawns marinated 24 hours, roasted in ghee with Mangalorean spice.</p><div class="sig-foot"><span class="sig-price">₹490</span><span class="tag">Signature</span></div></div>
-    </article>
-    <article class="sig-row">
-      <div class="sig-photo" data-plx="0.05"><img src="images/chilli-chicken.jpg" alt="Chicken chilli" loading="lazy"></div>
-      <div class="sig-body reveal"><span class="sig-index">No. 03</span><h3>Chicken Chilli</h3><p>Wok-tossed chicken with green peppers, onion and a fiery chilli-garlic glaze.</p><div class="sig-foot"><span class="sig-price">₹340</span><span class="tag spicy">Spicy</span></div></div>
-    </article>
-    <article class="sig-row">
-      <div class="sig-photo" data-plx="0.09"><img src="images/noodles.jpg" alt="Hakka noodles" loading="lazy"></div>
-      <div class="sig-body reveal"><span class="sig-index">No. 04</span><h3>Hakka Noodles</h3><p>Smoky wok-tossed noodles with peppers, cabbage and red chilli.</p><div class="sig-foot"><span class="sig-price">from ₹260</span></div></div>
-    </article>
-    <article class="sig-row">
-      <div class="sig-photo" data-plx="0.05"><img src="images/tandoori-fish.jpg" alt="Tandoori fish" loading="lazy"></div>
-      <div class="sig-body reveal"><span class="sig-index">No. 05</span><h3>Tandoori Fish</h3><p>Whole fish coated in red spice, chargrilled in the clay oven, with chutney.</p><div class="sig-foot"><span class="sig-price">₹410</span></div></div>
-    </article>
-    <article class="sig-row">
-      <div class="sig-photo" data-plx="0.09"><img src="images/naan.jpg" alt="Fresh tandoori naan in a basket" loading="lazy"></div>
-      <div class="sig-body reveal"><span class="sig-index">No. 06</span><h3>Tandoori Breads</h3><p>Baked fresh in the tandoor — butter naan, garlic naan, laccha paratha and more.</p><div class="sig-foot"><span class="sig-price">from ₹25</span></div></div>
-    </article>
+    <div class="exp-grid">
+      <article class="exp-card reveal">
+        <div class="exp-photo" data-plx="0.04"><img src="images/interior.jpg" alt="The family dining room at Hotel Sky Lounge" loading="lazy"></div>
+        <span class="exp-label">The Family Room</span>
+        <h3>Calm tables, warm light</h3>
+        <p>Room for everyone — the heart of the house, where families gather and no one is in a hurry.</p>
+        <span class="exp-time">Open daily · 11 AM – 12 AM</span>
+      </article>
+      <article class="exp-card reveal reveal-d1">
+        <div class="exp-photo" data-plx="0.07"><img src="images/ai-bar.jpg" alt="Smoked cocktail and chocolate dessert on the bar counter" loading="lazy"></div>
+        <span class="exp-label">The Bar</span>
+        <h3>Evenings, a little longer</h3>
+        <p>A full bar kept in its own section, apart from the family room. The bar menu awaits at the restaurant.</p>
+        <span class="exp-time">At the restaurant</span>
+      </article>
+      <article class="exp-card reveal reveal-d2">
+        <div class="exp-photo" data-plx="0.05"><img src="images/ai-interior.jpg" alt="Candlelit dining room with brass lamps and velvet chairs" loading="lazy"></div>
+        <span class="exp-label">Evenings at the Tower</span>
+        <h3>Come at night</h3>
+        <p>When the tower lights up and the whole building glows over Nila Road — that is when Sky Lounge feels most itself.</p>
+        <span class="exp-time">Best after sunset</span>
+      </article>
+    </div>
   </div>
 </section>
 
 <!-- PARALLAX BAND -->
-<section class="band" aria-label="The dining room at night">
-  <div class="band-img"><img src="images/ai-interior.jpg" alt="Candlelit dining room with brass lamps and velvet chairs" loading="lazy"></div>
+<section class="band" aria-label="A feast from the kitchen">
+  <div class="band-img"><img src="images/ai-hero.jpg" alt="Overhead feast of butter chicken, tandoori chicken, naan and chutneys" loading="lazy"></div>
   <div class="band-quote">
-    <blockquote>“Come at night, when the building lights up.”</blockquote>
-    <cite>The Sky Lounge evenings</cite>
+    <blockquote>“Fire, patience, and the art of the handi.”</blockquote>
+    <cite>From the Kitchen</cite>
   </div>
 </section>
 
@@ -272,112 +277,79 @@ HTML = f"""<!DOCTYPE html>
 <section id="menu" class="section-pad">
   <div class="wrap">
     <div class="sec-head reveal">
-      <span class="num">04</span>
-      <h2 class="display">The Menu</h2>
-      <span class="rule"></span>
-      <span class="serif-it" style="font-size:1.4rem;color:var(--wine);">every dish, every price</span>
+      <p class="eyebrow">The Menu</p>
+      <h2>A taste of <em>the house.</em></h2>
+      <div class="ornament"><span>✦</span></div>
+      <p class="lead">A small selection from the kitchen — the dishes guests ask for by name.</p>
     </div>
-    <div class="menu-tools reveal">
-      <div class="search-box">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input id="menuSearch" type="search" placeholder="Search the menu — try &quot;biryani&quot;…" aria-label="Search the menu">
+    <div class="menu-sheet reveal">
+      <div class="menu-cols">{MENU}</div>
+      <div class="menu-foot">
+        <p>Over 200 dishes grace the full menu — <em>available at the restaurant.</em> To taste the house at home, order below.</p>
+        <div class="menu-ctas">
+          <a class="btn btn-gold" href="{esc(R['zomato'])}" target="_blank" rel="noopener">Order on Zomato</a>
+          <a class="btn btn-outline" href="{esc(SWIGGY)}" target="_blank" rel="noopener">Order on Swiggy</a>
+        </div>
       </div>
-      <label class="veg-toggle"><input type="checkbox" id="vegOnly"><span class="switch"></span> Veg only</label>
-    </div>
-    <div class="tabs reveal" role="tablist" aria-label="Menu categories">{tabs}</div>
-    {panels}
-    <div class="search-results" id="searchResults"></div>
-    <p class="menu-note">Prices in Indian Rupees (₹), as per the restaurant menu. <span class="veg-dot" title="Veg"></span> vegetarian · <span class="veg-dot nonveg" title="Non-veg"></span> non-vegetarian. The bar menu is available at the restaurant — ask our team. Menu items and prices may change; call <a href="tel:{esc(R['phone'])}">{esc(R['phoneDisplay'])}</a> to confirm.</p>
-  </div>
-</section>
-
-<!-- BAR -->
-<section id="bar" class="section-pad" style="padding-top:20px;">
-  <div class="wrap bar-grid">
-    <div class="bar-photo" data-plx="0.07"><img src="images/ai-bar.jpg" alt="Smoked cocktail and chocolate dessert on the bar counter" loading="lazy"></div>
-    <div class="bar-copy reveal">
-      <p class="eyebrow">05 — Bar &amp; Beverages</p>
-      <h2 class="display">After dinner,<br><span class="serif-it">something slower.</span></h2>
-      <p>A full bar, kept in its own section — so the evening can stretch a little longer. Alongside it, the kitchen's own coolers and desserts, made the same unhurried way.</p>
-      <ul class="bar-list">
-        <li><b>Full bar</b><span>menu at the restaurant</span></li>
-        <li><b>Lassi</b><span>₹80</span></li>
-        <li><b>Cold coffee</b><span>₹110</span></li>
-        <li><b>Fresh lime soda</b><span>₹60</span></li>
-        <li><b>Sizzling brownie</b><span>₹270</span></li>
-      </ul>
     </div>
   </div>
 </section>
 
 <!-- GALLERY -->
-<section id="gallery" class="section-pad" style="padding-top:30px;">
+<section id="gallery" class="dark section-pad">
   <div class="wrap">
     <div class="sec-head reveal">
-      <span class="num">06</span>
-      <h2 class="display">Gallery</h2>
-      <span class="rule"></span>
-      <span class="serif-it" style="font-size:1.4rem;color:var(--wine);">the place, at night</span>
+      <p class="eyebrow">Gallery</p>
+      <h2>The place, <em>at night.</em></h2>
+      <div class="ornament"><span>✦</span></div>
     </div>
-    <div class="stagger">
-      <div class="stagger-row">
-        <figure class="g-item g-a" data-plx="0.04"><img src="images/exterior-night.jpg" alt="The Sky Lounge tower, lit up at night" loading="lazy"><figcaption><i>The tower,</i> lit up at night</figcaption></figure>
-        <figure class="g-item g-b" data-plx="0.07"><img src="images/noodles.jpg" alt="Hakka noodles" loading="lazy"><figcaption><i>Hakka noodles,</i> from the wok</figcaption></figure>
-        <figure class="g-item g-c" data-plx="0.07"><img src="images/biryani.jpg" alt="Chicken biryani" loading="lazy"><figcaption><i>Chicken biryani</i></figcaption></figure>
-        <figure class="g-item g-d" data-plx="0.05"><img src="images/chilli-chicken.jpg" alt="Chicken chilli" loading="lazy"><figcaption><i>Chicken chilli</i></figcaption></figure>
-        <figure class="g-item g-e" data-plx="0.06"><img src="images/tandoori-fish.jpg" alt="Tandoori fish" loading="lazy"><figcaption><i>Tandoori fish</i></figcaption></figure>
-        <figure class="g-item g-f" data-plx="0.06"><img src="images/naan.jpg" alt="Fresh tandoori naan in a basket" loading="lazy"><figcaption><i>Fresh tandoori naan</i></figcaption></figure>
-        <figure class="g-item g-g" data-plx="0.08"><img src="images/fried-rice.jpg" alt="Egg fried rice" loading="lazy"><figcaption><i>Egg fried rice</i></figcaption></figure>
-      </div>
+    <div class="stagger-row">
+      <figure class="g-item g-a" data-plx="0.03"><img src="images/exterior-night.jpg" alt="The Sky Lounge tower, lit up at night" loading="lazy"><figcaption><i>The tower,</i> lit up at night</figcaption></figure>
+      <figure class="g-item g-b" data-plx="0.06"><img src="images/noodles.jpg" alt="Hakka noodles" loading="lazy"><figcaption><i>Hakka noodles,</i> from the wok</figcaption></figure>
+      <figure class="g-item g-c" data-plx="0.05"><img src="images/biryani.jpg" alt="Chicken biryani" loading="lazy"><figcaption><i>Chicken biryani</i></figcaption></figure>
+      <figure class="g-item g-d" data-plx="0.04"><img src="images/chilli-chicken.jpg" alt="Chicken chilli" loading="lazy"><figcaption><i>Chicken chilli</i></figcaption></figure>
+      <figure class="g-item g-e" data-plx="0.06"><img src="images/tandoori-fish.jpg" alt="Tandoori fish" loading="lazy"><figcaption><i>Tandoori fish</i></figcaption></figure>
+      <figure class="g-item g-f" data-plx="0.04"><img src="images/naan.jpg" alt="Fresh tandoori naan in a basket" loading="lazy"><figcaption><i>Fresh tandoori naan</i></figcaption></figure>
+      <figure class="g-item g-g" data-plx="0.05"><img src="images/fried-rice.jpg" alt="Egg fried rice" loading="lazy"><figcaption><i>Egg fried rice</i></figcaption></figure>
     </div>
   </div>
 </section>
 
-<!-- REVIEWS -->
-<section class="reviews section-pad">
+<!-- GUEST WORDS -->
+<section class="section-pad">
   <div class="wrap">
-    <div class="review-top reveal">
-      <span class="big-rating">4.1</span>
-      <div><div class="stars">★★★★☆</div><p>126 Google reviews — and counting.</p></div>
+    <div class="sec-head reveal">
+      <p class="eyebrow">Guest Words</p>
+      <h2>What the city <em>says.</em></h2>
+      <div class="ornament"><span>✦</span></div>
     </div>
-    <div class="review-grid">
-      <article class="review-card reveal"><blockquote>“Beautiful ambiance. Do visit at night. Food is their USP.”</blockquote><footer>— Google review</footer></article>
-      <article class="review-card reveal reveal-d1"><blockquote>“Chicken biryani and kebabs are too good. The atmosphere at night feels charming.”</blockquote><footer>— Google review</footer></article>
-      <article class="review-card reveal reveal-d2"><blockquote>“Very nice property. Separate family and bar sections, well arranged.”</blockquote><footer>— Google review</footer></article>
+    <div class="voices">
+      <article class="voice reveal"><span class="stars">★★★★★</span><blockquote>“Beautiful ambiance. Do visit at night. Food is their USP.”</blockquote><footer>— Google review</footer></article>
+      <article class="voice reveal reveal-d1"><span class="stars">★★★★★</span><blockquote>“Chicken biryani and kebabs are too good. The atmosphere at night feels charming.”</blockquote><footer>— Google review</footer></article>
+      <article class="voice reveal reveal-d2"><span class="stars">★★★★★</span><blockquote>“Very nice property. Separate family and bar sections, well arranged.”</blockquote><footer>— Google review</footer></article>
     </div>
+    <p class="rating-line reveal"><b>4.1</b> from 126 Google reviews — and counting.</p>
   </div>
 </section>
 
 <!-- VISIT -->
-<section id="visit" class="section-pad">
-  <div class="wrap visit-grid">
-    <div class="visit-info reveal">
-      <p class="eyebrow">07 — Visit Us</p>
-      <h2 class="display">Find your<br><span class="serif-it">table.</span></h2>
-      <dl class="visit-lines">
-        <div><dt>Address</dt><dd>{esc(R['address'])}</dd></div>
-        <div><dt>Hours</dt><dd>Open all days · 11:00 AM – 12:00 AM</dd></div>
-        <div><dt>Phone</dt><dd><a href="tel:{esc(R['phone'])}">{esc(R['phoneDisplay'])}</a></dd></div>
-        <div><dt>Instagram</dt><dd><a href="{esc(R['instagram'])}" target="_blank" rel="noopener">{esc(R['instagramHandle'])}</a></dd></div>
-      </dl>
-      <div class="visit-ctas">
-        <a class="btn-line solid" href="{esc(R['maps'])}" target="_blank" rel="noopener">Get Directions</a>
-        <a class="btn-line" href="tel:{esc(R['phone'])}">Call the Restaurant</a>
-      </div>
-    </div>
-    <div class="map-frame reveal reveal-d1">
-      <iframe title="Map — Hotel Sky Lounge, Nanded" src="https://www.google.com/maps?q=19.193374,77.278159&amp;z=16&amp;output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
-    </div>
-  </div>
-</section>
-
-<!-- ORDER STRIP -->
-<section class="order-strip">
+<section id="visit" class="dark section-pad visit">
   <div class="wrap">
-    <div><h3>Hungry already?</h3><p>Order Sky Lounge at home — delivery and takeaway, every day.</p></div>
-    <div class="order-btns">
-      <a class="btn-line solid" href="{esc(R['zomato'])}" target="_blank" rel="noopener">Order on Zomato</a>
-      <a class="btn-line" href="{esc(SWIGGY)}" target="_blank" rel="noopener">Order on Swiggy</a>
+    <p class="eyebrow reveal">Visit Us</p>
+    <h2 class="reveal">Find your <em>table.</em></h2>
+    <div class="ornament reveal"><span>✦</span></div>
+    <dl class="visit-lines reveal">
+      <div><dt>Address</dt><dd>{esc(R['address'])}</dd></div>
+      <div><dt>Hours</dt><dd>Open all days · 11:00 AM – 12:00 AM</dd></div>
+      <div><dt>Phone</dt><dd><a href="tel:{esc(R['phone'])}">{esc(R['phoneDisplay'])}</a></dd></div>
+      <div><dt>Instagram</dt><dd><a href="{esc(R['instagram'])}" target="_blank" rel="noopener">{esc(R['instagramHandle'])}</a></dd></div>
+    </dl>
+    <div class="visit-ctas reveal">
+      <a class="btn btn-gold" href="{esc(R['maps'])}" target="_blank" rel="noopener">Get Directions</a>
+      <a class="btn btn-outline" href="tel:{esc(R['phone'])}">Call the Restaurant</a>
+    </div>
+    <div class="map-frame reveal">
+      <iframe title="Map — Hotel Sky Lounge, Nanded" src="https://www.google.com/maps?q=19.193374,77.278159&amp;z=16&amp;output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
     </div>
   </div>
 </section>
@@ -386,25 +358,21 @@ HTML = f"""<!DOCTYPE html>
 
 <footer>
   <div class="wrap">
-    <p class="foot-mark display">Sky <span class="serif-it">Lounge</span></p>
-    <div class="footer-grid">
-      <nav aria-label="Footer">
-        <a href="#story">Story</a>
-        <a href="#signatures">Signatures</a>
-        <a href="#menu">Menu</a>
-        <a href="#gallery">Gallery</a>
-        <a href="#visit">Visit Us</a>
-      </nav>
-      <nav aria-label="Order and social">
-        <a href="{esc(R['zomato'])}" target="_blank" rel="noopener">Zomato</a>
-        <a href="{esc(SWIGGY)}" target="_blank" rel="noopener">Swiggy</a>
-        <a href="{esc(R['instagram'])}" target="_blank" rel="noopener">Instagram</a>
-        <a href="{esc(R['maps'])}" target="_blank" rel="noopener">Google Maps</a>
-      </nav>
-    </div>
+    <p class="foot-mark">Sky <em>Lounge</em></p>
+    <p class="foot-tag">Family Restaurant &amp; Bar · Nanded · Est. April 2023</p>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="#story">Our Story</a>
+      <a href="#experiences">Experiences</a>
+      <a href="#menu">Menu</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#visit">Visit Us</a>
+      <a href="{esc(R['zomato'])}" target="_blank" rel="noopener">Zomato</a>
+      <a href="{esc(SWIGGY)}" target="_blank" rel="noopener">Swiggy</a>
+      <a href="{esc(R['instagram'])}" target="_blank" rel="noopener">Instagram</a>
+    </nav>
     <div class="footer-bottom">
       <span>© 2026 Hotel Sky Lounge, Nanded. All rights reserved.</span>
-      <span>Family Restaurant &amp; Bar · Open daily 11 AM – 12 AM</span>
+      <span>Open daily 11 AM – 12 AM</span>
     </div>
   </div>
 </footer>
@@ -422,4 +390,4 @@ HTML = f"""<!DOCTYPE html>
 """
 
 (HERE / "index.html").write_text(HTML, encoding="utf-8")
-print(f"Wrote index.html ({len(HTML)} bytes), {total_items} menu entries, {len(DATA['menu'])} categories")
+print(f"Wrote index.html ({len(HTML)} bytes)")

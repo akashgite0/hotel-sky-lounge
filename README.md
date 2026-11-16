@@ -5,8 +5,8 @@ Nila Road, Nanded, Maharashtra 431605.
 
 - Live site: https://hotel-sky-lounge.vercel.app/ (Vercel, auto-deploys from `main`)
 - Stack: plain HTML + CSS + JavaScript. No build step, no framework.
-- Design: parallax editorial — cream paper palette, letterspaced display type, scroll-driven parallax (fixed hero, drifting photo layers, full-bleed bands).
-- Menu data lives in `menu.json`; `index.html` is generated from it.
+- Design: Taj-inspired luxe for a restaurant — dark espresso, ivory and antique gold, grand serif typography, story-first sections (welcome, our story, experiences), a small elegant curated menu section, staggered gallery. Scroll-driven parallax throughout (fixed hero, drifting photo layers, full-bleed bands).
+- The full menu data lives in `menu.json`; `index.html` is generated from it, but only a small curated selection (19 dishes, verified against `menu.json` at build time) is shown on the site, by design.
 
 ## Structure
 
@@ -14,9 +14,9 @@ Nila Road, Nanded, Maharashtra 431605.
 |---|---|
 | `index.html` | The whole site (generated — do not hand-edit the menu section) |
 | `styles.css` | All styling |
-| `script.js` | Parallax engine, menu tabs/search/filter, gallery lightbox, mobile nav |
-| `menu.json` | Restaurant details + full menu with prices (source of truth) |
-| `build.py` | Generates `index.html` from `menu.json` |
+| `script.js` | Parallax engine, reveals, gallery lightbox, mobile nav |
+| `menu.json` | Restaurant details + full menu with prices (source of truth; the site shows a curated selection) |
+| `build.py` | Generates `index.html` from `menu.json`, verifying curated dish prices |
 | `images/` | Real photos from the Google listing + AI-generated editorial images (`ai-*.jpg`) |
 | `vercel.json` | Vercel deployment config (caching headers) |
 
